@@ -1,8 +1,10 @@
 import cgi
+import logging
 import os
 import urllib
 
 from google.appengine.api import users
+from google.appengine.api import memcache
 from google.appengine.ext import ndb
 
 import jinja2
@@ -48,15 +50,7 @@ class MainPage(webapp2.RequestHandler):
 		guestbook_name = self.request.get('guestbook_name',
 										  DEFAULT_GUESTBOOK_NAME)
 
-		# Ancestor Queries, as shown here, are strongly consistent
-		# with the High Replication Datastore. Queries that span
-		# entity groups are eventually consistent. If we omitted the
-		# ancestor from this query there would be a slight chance that
-		# Greeting that had just been written would not show up in a
-		# query.
-		greetings_query = Greeting.query(
-			ancestor=guestbook_key(guestbook_name)).order(-Greeting.date)
-		greetings = greetings_query.fetch(10)
+		greetings = self._get_greetings(guestbook_name)
 
 		user = users.get_current_user()
 		if user:
@@ -76,6 +70,18 @@ class MainPage(webapp2.RequestHandler):
 
 		template = JINJA_ENVIRONMENT.get_template('index.html')
 		self.response.write(template.render(template_values))
+
+	def _get_greetings(self, guestbook_name):
+		greetings = memcache.get('%s:greetings' % guestbook_name, 10)
+		if greetings is not None:
+			return greetings
+		else:
+			greetings_query = Greeting.query(
+				ancestor=guestbook_key(guestbook_name)).order(-Greeting.date)
+			greetings = greetings_query.fetch(10)
+			if not memcache.set('%s:greetings' % guestbook_name, greetings, 10):
+				logging.error('Memchace set failed.')
+		return greetings
 
 
 class Guestbook(webapp2.RequestHandler):
@@ -97,6 +103,12 @@ class Guestbook(webapp2.RequestHandler):
 		greeting.content = self.request.get('content')
 		greeting.put()
 
+		# update to memcache
+		greetings = memcache.get('%s:greetings' % guestbook_name)
+		greetings.insert(0, greeting)
+		memcache.set('%s:greetings'%guestbook_name, greetings)
+
+		# redirect
 		query_params = {'guestbook_name': guestbook_name}
 		self.redirect('/?' + urllib.urlencode(query_params))
 
