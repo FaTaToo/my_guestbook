@@ -108,7 +108,9 @@ ROOT_URLCONF = 'urls'
 WSGI_APPLICATION = 'django_guestbook.wsgi.application'
 
 import os
-TEMPLATE_DIRS = (os.path.join(os.path.dirname(__file__), '', 'templates').replace('\\','/'),)
+# TEMPLATE_DIRS = (os.path.join(os.path.dirname(__file__), '', 'templates').replace('\\','/'),)
+ROOT_PATH = os.path.dirname(__file__)
+TEMPLATE_DIRS = (os.path.join(ROOT_PATH, "templates"),)
 
 INSTALLED_APPS = (
     'django.contrib.auth',

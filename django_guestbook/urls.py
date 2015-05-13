@@ -5,7 +5,7 @@ from django.conf.urls import patterns, include, url
 # admin.autodiscover()
 
 urlpatterns = patterns('',
-    # Examples:
+	url(r'^', include('djangoguestbook.urls'))# Examples:
     # url(r'^$', 'django_guestbook.views.home', name='home'),
     # url(r'^django_guestbook/', include('django_guestbook.foo.urls')),
 
