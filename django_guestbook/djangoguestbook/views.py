@@ -1,4 +1,3 @@
-import logging
 import urllib
 
 from google.appengine.api import users
@@ -6,6 +5,7 @@ from google.appengine.api.labs import taskqueue
 
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
+from django.http import HttpResponseRedirect
 
 from djangoguestbook.models import Guestbook
 from djangoguestbook.forms import GreetingForm, SwitchGuestbookForm
@@ -37,6 +37,7 @@ class MainPageView(TemplateView):
 		context['greetings'] = greetings
 		context['url'] = url
 		context['url_linktext'] = url_linktext
+		context['is_user_admin'] = users.is_current_user_admin()
 
 		# get greeting form in in_valid case (if needed)
 		greeting_form = kwargs.get('sign_guestbook_form',
@@ -57,6 +58,23 @@ class MainPageView(TemplateView):
 
 		return greetings
 
+	def get(self, request, *args, **kwargs):
+		action = self.request.GET.get('action', 'list')
+
+		if action == 'delete-message':
+			# get greeting_id
+			greeting_id = self.request.GET.get('greeting_id',-1)
+
+			if greeting_id > 0:
+				# get guestbook_name
+				guestbook_name = self.request.GET.get('guestbook_name',
+											  AppConstants.get_default_guestbook_name())
+				Guestbook.delete_greeting_by_id(guestbook_name, greeting_id)
+
+				return HttpResponseRedirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))
+
+		return super(MainPageView, self).get(request, *args, **kwargs)
+
 
 class SignGuestbook(MainPageView, FormView):
 	template_name = "guestbook/main_page.html"
@@ -65,7 +83,6 @@ class SignGuestbook(MainPageView, FormView):
 
 	def form_valid(self, form):
 		new_greeting = form.save_greeting()
-		logging.warning(new_greeting)
 		if new_greeting:
 			if users.get_current_user():
 				user_email = users.get_current_user().email()
