@@ -45,7 +45,3 @@ class Guestbook:
 
 		# clear cache
 		memcache.delete('%s:greetings' % guestbook_name)
-
-	@classmethod
-	def get_default_name(cls):
-		return DEFAULT_GUESTBOOK_NAME
