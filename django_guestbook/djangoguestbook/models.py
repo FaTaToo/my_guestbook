@@ -3,8 +3,7 @@ import logging
 from google.appengine.ext import ndb
 from google.appengine.api import memcache
 
-DEFAULT_GUESTBOOK_NAME = 'default_guestbook'
-DEFAULT_CACHE_TIME = 3600 * 24 * 30
+from djangoguestbook.appconstants import AppConstants
 
 
 class Greeting(ndb.Model):
@@ -13,8 +12,8 @@ class Greeting(ndb.Model):
 	date = ndb.DateTimeProperty(auto_now_add=True)
 
 	@classmethod
-	def get_key_from_name(cls, guestbook_name=DEFAULT_GUESTBOOK_NAME):
-		return ndb.Key('guestbook', guestbook_name)
+	def get_key_from_name(cls, guestbook_name=None):
+		return ndb.Key('guestbookdemo', guestbook_name or AppConstants.get_default_guestbook_name())
 
 
 class Guestbook:
@@ -28,20 +27,30 @@ class Guestbook:
 				ancestor=guestbook_key).order(-Greeting.date)
 			greetings = greetings_query.fetch(number_of_greeting)
 
-			if not memcache.add('%s:greetings' % guestbook_name, greetings, DEFAULT_CACHE_TIME):
+			if not memcache.add('%s:greetings' % guestbook_name, greetings,
+								AppConstants.get_default_cache_time()):
 				logging.error('Memcache set failed.')
+
 		return greetings
 
 	@classmethod
 	def put_greeting_with_data(cls, guestbook_name, greeting_author, greeting_content):
 		guestbook_key = Greeting.get_key_from_name(guestbook_name)
 
-		greeting = Greeting(parent=guestbook_key)
-		greeting.author = greeting_author
-		greeting.content = greeting_content
+		@ndb.transactional
+		def put_greeting_to_db():
+			greeting = Greeting(parent=guestbook_key)
+			greeting.author = greeting_author
+			greeting.content = greeting_content
 
-		# save object
-		greeting.put()
+			# save object
+			greeting.put()
 
-		# clear cache
-		memcache.delete('%s:greetings' % guestbook_name)
+			# clear cache
+			memcache.delete('%s:greetings' % guestbook_name)
+
+			return greeting
+
+		new_greeting = put_greeting_to_db()
+
+		return new_greeting
