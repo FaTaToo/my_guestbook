@@ -1,2 +1,4 @@
-# - Limit greeting messgae max=10 letters
-# - Using django FormView to validate post data, and auto show invalid fields
+# - Using google api sendmail, taskqueue, ndb.transactional
+# - After commit a greeting successfully, send a notification email
+# from greeting sender
+# to a specific email address (abc@....)
