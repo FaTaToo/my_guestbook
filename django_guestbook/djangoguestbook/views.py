@@ -1,51 +1,70 @@
-from django.http import HttpResponseRedirect
-from django.shortcuts import render_to_response
-from django.template import RequestContext
-from google.appengine.api import users
-
-from djangoguestbook.models import Greeting, guestbook_key, DEFAULT_GUESTBOOK_NAME
-
+import logging
 import urllib
 
+from google.appengine.api import users, memcache
 
-def main_page(request):
-	guestbook_name = request.GET.get('guestbook_name', DEFAULT_GUESTBOOK_NAME)
+from django.http import HttpResponseRedirect
+from django.views.generic import TemplateView
 
-	# Ancestor Queries, as shown here, are strongly consistent with the High
-	# Replication Datastore. Queries that span entity groups are eventually
-	# consistent. If we omitted the ancestor from this query there would be
-	# a slight chance that Greeting that had just been written would not
-	# show up in a query.
-	greetings_query = Greeting.query(ancestor=guestbook_key(guestbook_name)).order(-Greeting.date)
-	greetings = greetings_query.fetch(10)
-
-	if users.get_current_user():
-		url = users.create_logout_url(request.get_full_path())
-		url_linktext = 'Logout'
-	else:
-		url = users.create_login_url(request.get_full_path())
-		url_linktext = 'Login'
-
-	template_values = {
-		'greetings': greetings,
-		'guestbook_name': guestbook_name,
-		'url': url,
-		'url_linktext': url_linktext,
-	}
-	return render_to_response('guestbook/main_page.html',
-							template_values,
-							context_instance=RequestContext(request))
+from djangoguestbook.models import Greeting
+from djangoguestbook.models import guestbook_key
 
 
-def sign_post(request):
-	if request.method == 'POST':
+class MainPageView(TemplateView):
+	template_name = "guestbook/main_page.html"
+
+	def get_context_data(self, **kwargs):
+		context = super(MainPageView, self).get_context_data(**kwargs)
+
+		# get guestbook_name
+		guestbook_name = self.request.GET.get('guestbook_name', 'default_guestbook')
+		context['guestbook_name'] = guestbook_name
+
+		# get list of Greeting
+		greetings = memcache.get('%s:greetings' % guestbook_name)
+		if greetings is None:
+			greetings = self.get_queryset()
+			if not memcache.add('%s:greetings' % guestbook_name, greetings, 3600 * 24 * 30):
+				logging.error('Memcache set failed.')
+
+		context['greetings'] = greetings
+
+		# create login/logout url
+		if users.get_current_user():
+			url = users.create_logout_url(self.request.get_full_path())
+			url_linktext = 'Logout'
+		else:
+			url = users.create_login_url(self.request.get_full_path())
+			url_linktext = 'Login'
+
+		context['url'] = url
+		context['url_linktext'] = url_linktext
+
+		return context
+
+	def get_queryset(self):
+		guestbook_name = self.request.GET.get('guestbook_name', 'default_guestbook')
+		key = guestbook_key(guestbook_name)
+		greetings_query = Greeting.query(
+			ancestor=key).order(-Greeting.date)
+		greetings = greetings_query.fetch(10)
+
+		return greetings
+
+	def post(self, request):
 		guestbook_name = request.POST.get('guestbook_name')
-		greeting = Greeting(parent=guestbook_key(guestbook_name))
+		key = guestbook_key(guestbook_name)
+		greeting = Greeting(parent=key)
 
 		if users.get_current_user():
-			greeting.author = users.get_current_user()
+			greeting.author = users.get_current_user().nickname()
 
 		greeting.content = request.POST.get('content')
+		# save object
 		greeting.put()
+
+		# clear cache
+		# problem??? why we delete memcache???
+		memcache.delete('%s:greetings' % guestbook_name)
+
 		return HttpResponseRedirect('/?' + urllib.urlencode({'guestbook_name': guestbook_name}))
-	return HttpResponseRedirect('/')
