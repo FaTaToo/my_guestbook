@@ -1,6 +1,8 @@
 import logging
 import datetime
 
+from google.appengine.datastore.datastore_query import Cursor
+
 from google.appengine.ext import ndb
 from google.appengine.api import memcache
 
@@ -11,11 +13,31 @@ class Greeting(ndb.Model):
 	author = ndb.StringProperty()
 	content = ndb.StringProperty()
 	date = ndb.DateTimeProperty(auto_now_add=True)
+	updated_by = ndb.StringProperty()
+	updated_date = ndb.DateTimeProperty(auto_now_add=True)
 
 	@classmethod
 	def get_key_from_name(cls, guestbook_name=None):
 		return ndb.Key('guestbookdemo', guestbook_name or AppConstants.get_default_guestbook_name())
 
+	def to_dict(self, include=None, exclude=None):
+		dict = {
+			"id":self.key.id(),
+			"content":self.content,
+			"date":self.date.strftime("%Y-%m-%d %H:%M +0000"),
+			"updated_by":self.updated_by
+		}
+		if self.author:
+			dict['author'] = self.author
+		else:
+			dict['author'] = "Anonymous"
+
+		if self.updated_date:
+			dict['updated_date'] = self.updated_date.strftime("%Y-%m-%d %H:%M +0000")
+		else:
+			dict['updated_date'] = None
+
+		return dict
 
 class Guestbook:
 
@@ -107,3 +129,21 @@ class Guestbook:
 			return updated_greeting
 		else:
 			return None
+
+	@classmethod
+	def get_page(cls, guestbook_name, pagesize, curs_str=None):
+		if pagesize <= 0:
+			items = None
+			nextcurs = None
+			more = None
+		try:
+			guestbook_key = Greeting.get_key_from_name(guestbook_name)
+			curs = Cursor(urlsafe=curs_str)
+			items, nextcurs, more = Greeting.query(
+				ancestor=guestbook_key).order(-Greeting.date)\
+				.fetch_page(pagesize, start_cursor=curs)
+		except:
+			items = None
+			nextcurs = None
+			more = None
+		return items, nextcurs, more
