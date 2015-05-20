@@ -1,4 +1,5 @@
 import json
+import logging
 
 from google.appengine.api import users
 from google.appengine.api.labs import taskqueue
@@ -49,16 +50,23 @@ class APIListGreeting(JSONResponseMixin, FormView):
 		cursor_str = self.request.GET.get('cursor', None)
 
 		# get list of Greeting, next_cursor, is_more
-		greetings, next_cursor, is_more = self.get_queryset(guestbook_name, 20, cursor_str)
-		greetings_dict = [greeting.to_dict() for greeting in greetings]
-
-		data = {}
-		data['greetings'] = greetings_dict
-		if next_cursor:
-			data['cursor'] = next_cursor.urlsafe()
-		data['is_more'] = is_more
-
-		return data
+		data_all = {}
+		is_more = True
+		i = 1
+		next_cursor = cursor_str
+		while is_more:
+			logging.warning(i)
+			greetings, next_cursor, is_more = self.get_queryset(guestbook_name, 3, next_cursor)
+			if greetings is not None:
+				greetings_dict = [greeting.to_dict() for greeting in greetings]
+				data = {}
+				data['greetings'] = greetings_dict
+				if next_cursor:
+					data['cursor'] = next_cursor.urlsafe()
+				data['is_more'] = is_more
+				data_all['data' + str(i)] = data
+				i = i + 1
+		return data_all
 
 	# Get queryset for API get list Greeting
 	def get_queryset(self,
@@ -67,7 +75,6 @@ class APIListGreeting(JSONResponseMixin, FormView):
 					 curs_str=None):
 
 		greetings, nextcurs, more = Guestbook.get_page(guestbook_name, number_of_greeting, curs_str)
-
 		return greetings, nextcurs, more
 
 	# Using method form_valid for API create Greeting
